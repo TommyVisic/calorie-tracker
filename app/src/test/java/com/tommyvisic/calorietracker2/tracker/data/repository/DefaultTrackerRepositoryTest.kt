@@ -1,0 +1,84 @@
+package com.tommyvisic.calorietracker2.tracker.data.repository
+
+import com.google.common.truth.Truth.assertThat
+import com.tommyvisic.calorietracker2.tracker.data.remote.OpenFoodApi
+import io.mockk.mockk
+import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.junit.After
+import org.junit.Before
+import org.junit.Test
+import retrofit2.Retrofit
+import retrofit2.converter.moshi.MoshiConverterFactory
+import java.util.concurrent.TimeUnit
+
+class DefaultTrackerRepositoryTest {
+
+    private lateinit var repository: DefaultTrackerRepository
+    private lateinit var mockWebServer: MockWebServer
+    private lateinit var okHttpClient: OkHttpClient
+    private lateinit var api: OpenFoodApi
+
+    @Before
+    fun setUp() {
+        mockWebServer = MockWebServer()
+        okHttpClient = OkHttpClient.Builder()
+            .writeTimeout(1, TimeUnit.SECONDS)
+            .readTimeout(1, TimeUnit.SECONDS)
+            .connectTimeout(1, TimeUnit.SECONDS)
+            .build()
+        api = Retrofit.Builder()
+            .addConverterFactory(MoshiConverterFactory.create())
+            .client(okHttpClient)
+            .baseUrl(mockWebServer.url("/"))
+            .build()
+            .create(OpenFoodApi::class.java)
+
+        repository = DefaultTrackerRepository(
+            dao = mockk(relaxed = true),
+            api = api
+        )
+    }
+
+    @Test
+    fun searchFoodValidResponse() = runBlocking {
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(validFoodResponse)
+        )
+        val result = repository.searchFood("banana", 1, 40)
+
+        assertThat(result.isSuccess).isTrue()
+    }
+
+    @Test
+    fun searchFoodInvalidResponse() = runBlocking {
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(403)
+                .setBody(validFoodResponse)
+        )
+        val result = repository.searchFood("banana", 1, 40)
+
+        assertThat(result.isFailure).isTrue()
+    }
+
+    @Test
+    fun searchFoodMalformedResponse() = runBlocking {
+        mockWebServer.enqueue(
+            MockResponse()
+                .setBody(invalidFoodResponse)
+        )
+        val result = repository.searchFood("banana", 1, 40)
+
+        assertThat(result.isFailure).isTrue()
+    }
+
+    @After
+    fun tearDown() {
+
+    }
+}
